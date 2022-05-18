@@ -1,0 +1,11 @@
+### Zsh ###
+# Zsh compiled script + zrecompile backup
+*.zwc
+*.zwc.old
+
+# Zsh completion-optimization dumpfile
+*zcompdump*
+
+# Zunit tests' output
+/tests/_output/*
+!/tests/_output/.gitkeep
