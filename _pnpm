@@ -1,0 +1,687 @@
+#compdef pnpm
+# ------------------------------------------------------------------------------
+# Copyright (c) 2022 Bruno Sales <baliestri@icloud.com>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# ------------------------------------------------------------------------------
+# Description
+# -----------
+#
+# Completion script for pnpm (https://pnpm.io)
+#
+# ------------------------------------------------------------------------------
+# Authors
+# -------
+#
+# * Bruno Sales <baliestri@icloud.com>
+#
+# ------------------------------------------------------------------------------
+
+declare -g _pnpm_run_cwd
+
+_commands=(
+  # Manage dependencies
+  'add:Installs a package and any packages that it depends on. By default, any new package is installed as a production dependency'
+  'install:Used to install all dependencies for a project'
+  'update:Updates packages to their latest version based on the specified range'
+  'remove:Removes packages from node_modules and from the project'\''s package.json'
+  'link:Makes the current local package accessible system-wide, or in another location'
+  'unlink:Unlinks a system-wide package (inverse of pnpm link)'
+  'import:Generates a pnpm-lock.yaml from another package manager'\''s lockfile'
+  'rebuild:Rebuild a package'
+  'prune:Removes unnecessary packages'
+  'fetch:Fetch packages from a lockfile into virtual store, package manifest is ignored'
+  'install-test:Runs pnpm install followed immediately by pnpm test'
+
+  # Review dependencies
+  'audit:Checks for known security issues with the installed packages'
+  'list:Output all the versions of packages that are installed, as well as their dependencies, in a tree-structure'
+  'outdated:Checks for outdated packages. The check can be limited to a subset of the installed packages by providing arguments (patterns are supported)'
+  'why:Shows all packages that depend on the specified package'
+
+  # Run scripts
+  'run:Runs a script defined in the package'\''s manifest file'
+  'test:Runs an arbitrary command specified in the package'\''s test property of its scripts object'
+  'exec:Execute a shell command in scope of a project'
+  'dlx:Fetches a package from the registry without installing it as a dependency, hotloads it, and runs whatever default command binary it exposes'
+  'create:Create a project from a create-* starter kit'
+  'start:Runs an arbitrary command specified in the package'\''s start property of its scripts object'
+
+  # Manage environments
+  'env:Manages the Node.js environment'
+
+  # Misc.
+  'publish:Publishes a package to the registry'
+  'pack:Create a tarball from a package'
+  'recursive:Runs a command in every project of a workspace, when used with the following commands'
+  'server:Manage a store server'
+  'store:Managing the package store'
+  'root:Prints the effective modules directory'
+  'bin:Prints the directory into which the executables of dependencies are linked'
+  'setup:This command is used by the standalone installation scripts of pnpm'
+  'init:Create a package.json file'
+)
+
+_server_commands=(
+  'start:Starts a server that performs all interactions with the store. Other commands will delegate any store-related tasks to this server'
+  'stop:Stops the store server'
+  'status:Prints information about the running server'
+)
+
+_store_commands=(
+  'status:Checks for modified packages in the store'
+  'add:Functionally equivalent to pnpm add, except this adds new packages to the store directly without modifying any projects or files outside of the store'
+  'prune:Removes unreferenced packages from the store'
+  'path:Returns the path to the active store directory'
+)
+
+_pnpm_find_package_json() {
+  local dir=$(cd "$1" && pwd)
+
+  while true
+  do
+    if [[ -e "${dir}/package.json" ]]; then
+      echo "${dir}/package.json"
+      return
+    fi
+
+    if [[ $dir == '/' ]]; then
+      break
+    fi
+
+    dir=$(dirname $dir)
+  done
+}
+
+_pnpm_commands_scripts() {
+  local -a scripts binaries
+  local packageJson
+
+  if [[ -n $opt_args[--cwd] ]]; then
+    packageJson=$(_pnpm_find_package_json $opt_args[--cwd])
+    binaries=($(cd $opt_args[--cwd] && echo node_modules/.bin/*(x:t)))
+  else
+    packageJson=$(_pnpm_find_package_json $pwd)
+    binaries=($(echo node_modules/.bin/*(x:t)))
+  fi
+
+  if [[ -n $packageJson ]]; then
+    scripts=($(cat "$packageJson" | perl -0777 -MJSON::PP -n -E '$r=decode_json($_); do{($k=$_)=~s/:/\\:/g;say $k}for sort keys %{$r->{scripts}}'))
+  fi
+
+  _describe 'command or script' _commands -- scripts -- binaries
+}
+
+_pnpm_scripts() {
+  local -a binaries scripts
+  local -a commands
+  local packageJson
+
+  if [[ -n $_pnpm_run_cwd ]]; then
+    packageJson=$(_pnpm_find_package_json $_pnpm_run_cwd)
+    if [[ -d "${_pnpm_run_cwd}/node_modules" ]]; then
+      binaries=($(cd $_pnpm_run_cwd && echo node_modules/.bin/*(x:t)))
+    else
+      binaries=($(cd $_pnpm_run_cwd && pnpm bin | perl -wln -e 'm{^[^:]+: (\S+)$} and print $1'))
+    fi
+  else
+    packageJson=$(_pnpm_find_package_json $pwd)
+    if [[ -d node_modules ]]; then
+      binaries=($(echo node_modules/.bin/*(x:t)))
+    else
+      binaries=($(pnpm bin | perl -wln -e 'm{^[^:]+: (\S+)$} and print $1'))
+    fi
+  fi
+
+  if [[ -n $packageJson ]]; then
+    scripts=("${(@f)$(cat ${packageJson} | perl -0777 -MJSON::PP -n -E '%r=%{decode_json($_)->{scripts}}; do{$k=$_;($e=$k)=~s/:/\\:/g; printf "$e:$r{$k}\n"} for sort keys %r')}")
+  fi
+
+  commands=($scripts $binaries)
+  _describe 'script' commands
+}
+
+_pnpm_server_commands() {
+  _describe 'command' _server_commands
+}
+
+_pnpm_store_commands() {
+  _describe 'command' _store_commands
+}
+
+_pnpm_commands() {
+  _describe 'command' _commands
+}
+
+_pnpm_add_files() {
+  if compset -P "(file|link):"; then
+    _files
+  fi
+}
+
+_pnpm() {
+  local context state state_descr line
+  typeset -A opt_args
+  local common_args common_args_foot filter_args
+
+  common_args=(
+    '(--no-color --color)'{--no-color,--color}'[Controls colors in the output. By default, output is always colored when it goes directly to a terminal]'
+    '--aggregate-output[Aggregate output from child processes that are run in parallel, and only print output when child process is finished. It makes reading large logs after running `pnpm recursive` with `--parallel` or with `--workspace-concurrency` much easier (especially on CI). Only `--reporter=append-only` is supported]'
+  )
+
+  common_args_foot=(
+    '--use-stderr[Divert all output to stderr]'
+    '(-w --workspace-root)'{-w,--workspace-root}'[Run the command on the root workspace project]'
+  )
+
+  filter_args=(
+    '--changed-files-ignore-pattern[Defines files to ignore when filtering for changed projects since the specified commit/branch]'
+    '--filter[Filtering allows you to restrict commands to specific subsets of packages]'
+    '--filter-prod[Filtering allows you to restrict commands to specific subsets of packages]'
+    '--test-pattern[Defines files related to tests. Useful with the changed since filter. When selecting only changed packages and their dependent packages, the dependent packages will be ignored in case a package has changes only in tests]'
+  )
+
+  _arguments \
+    '(-h --help)'{-h,--help}'[Output usage information]' \
+    '(-v --version)'{-v,--version}'[Output the version number]' \
+    '1: :_pnpm_commands_scripts' \
+    '*:: :->command_args'
+
+  case $state in
+    command_args)
+      case $words[1] in
+        help)
+          _arguments \
+            '1: :_pnpm_commands' \
+        ;;
+
+        add)
+          _arguments \
+            $common_args \
+            '(-E --no-save-exact --save-exact)'{-E,--no-save-exact,--save-exact}'[Install exact version]' \
+            '(--no-save-workspace-protocol --save-workspace-protocol)'{--no-save-workspace-protocol,--save-workspace-protocol}'[Save packages from the workspace with a "workspace:" protocol. True by default]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[Install a package globally]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--ignore-scripts[Don'\''t run lifecycle scripts]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--offline[Trigger an error if any required dependencies are not available in local store]' \
+            '--prefer-offline[Skip staleness checks for cached data, but request missing data from the server]' \
+            '(-r --recursive)'{-r,--recursive}'[Run installation recursively in every package found in subdirectories or in every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '(-D --save-dev)'{-D,--save-dev}'[Install the specified packages as `devDependencies`]' \
+            '(-O--save-optional)'{-O,--save-optional}'[Install the specified packages as `optionalDependencies`]' \
+            '--save-peer[Save package to your `peerDependencies` and `devDependencies`]' \
+            '(-P --save-prod)'{-P,--save-prod}'[Save package to your `dependencies`. The default behavior]' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--workspace[Only adds the new dependency if it is found in the workspace]' \
+            $common_args_foot \
+            '--virtual-store-dir[The directory with links to the store (default is node_modules/.pnpm). All direct and indirect dependencies of the project are linked into this directory]' \
+            $filter_args
+        ;;
+
+        install|i)
+          _arguments \
+            $common_args \
+            '(--no-frozen-lockfile --frozen-lockfile)'{--no-frozen-lockfile,--frozen-lockfile}'[Don'\''t generate a lockfile and fail if an update is needed. This setting is on by default in CI environments, so use --no-frozen-lockfile if you need to disable it for some reason]' \
+            '(--no-verify-store-integrity --verify-store-integrity)'{--no-verify-store-integrity,--verify-store-integrity}'[If false, doesn'\''t check whether packages in the store were mutated]' \
+            '--child-concurrency[Controls the number of child processes run parallelly to build node modules]' \
+            '(-D --dev)'{-D,--dev}'[Only `devDependencies` are installed regardless of the `NODE_ENV`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--fix-lockfile[Fix broken lockfile entries automatically]' \
+            '--force[Force reinstall dependencies: refetch packages modified in store, recreate a lockfile and/or modules directory created by a non-compatible version of pnpm]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--hoist-pattern[Hoist all dependencies matching the pattern to `node_modules/.pnpm/node_modules`. The default pattern is * and matches everything. Hoisted packages can be required by any dependencies, so it is an emulation of a flat node_modules]' \
+            '--ignore-pnpmfile[Disable pnpm hooks defined in .pnpmfile.cjs]' \
+            '--ignore-scripts[Don'\''t run lifecycle scripts]' \
+            '--lockfile-dir[The directory in which the pnpm-lock.yaml of the package will be created. Several projects may share a single lockfile]' \
+            '--lockfile-only[ Dependencies are not downloaded. Only `pnpm-lock.yaml` is updated]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--modules-dir[The directory in which dependencies will be installed (instead of node_modules)]' \
+            '--network-concurrency[Maximum number of concurrent network requests]' \
+            '--no-hoist[Dependencies inside the modules directory will have access only to their listed dependencies]' \
+            '--no-lockfile[Don'\''t read or generate a `pnpm-lock.yaml` file]' \
+            '--no-optional[`optionalDependencies` are not installed]' \
+            '--offline[Trigger an error if any required dependencies are not available in local store]' \
+            '--package-import-method[Changes the package import method]:method:->package_import_method_args' \
+            '--prefer-frozen-lockfile[If the available `pnpm-lock.yaml` satisfies the `package.json` then perform a headless installation]' \
+            '(-P --prod)'{-P,--prod}'[Packages in `devDependencies` won'\''t be installed]' \
+            '--public-hoist-pattern[Hoist all dependencies matching the pattern to the root of the modules directory `-r, --recursive`. Run installation recursively in every package found in subdirectories. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--shamefully-hoist[All the subdeps will be hoisted into the root node_modules. Your code will have access to them]' \
+            '--side-effects-cache[Use or cache the results of (pre/post)install hooks]' \
+            '--side-effects-cache-readonly[Only use the side effects cache if present, do not create it for new packages]' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--strict-peer-dependencies[Fail on missing or invalid peer dependencies]' \
+            '--use-running-store-server[Only allows installation with a store server. If no store server is running, installation will fail]' \
+            '--virtual-store-dir[The directory with links to the store (default is node_modules/.pnpm). All  direct and indirect dependencies of the project are linked into this directory]' \
+            '--reporter[Allows you to choose the reporter that will log debug info to the terminal about the installation progress]:reporter:->reporter_args' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        update|up)
+          _arguments \
+            $common_args \
+            '--depth[How deep should levels of dependencies be inspected. Infinity is default. 0 would mean top-level dependencies only]' \
+            '(-D --dev)'{-D,--dev}'[Update packages only in `devDependencies`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[Update globally installed packages]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '(-i --interactive)'{-i,--interactive}'[Show outdated dependencies and select which ones to update]' \
+            '(-L --latest)'{-L,--latest}'[Ignore version ranges in package.json]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--no-optional[Don'\''t update packages in `optionalDependencies`]' \
+            '(-P --prod)'{-P,--prod}'[Update packages only in `dependencies` and `optionalDependencies`]' \
+            '(-r --recursive)'{-r,--recursive}'[Update in every package found in subdirectories or every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--workspace[Only adds the new dependency if it is found in the workspace]' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        remove|uninstall|rm)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[Remove globally installed packages]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '(--recursive -r)'{--recursive,-r}'[Remove from every package found in subdirectories or from every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '(-D --save-dev)'{-D,--save-dev}'[Only remove packages from `devDependencies`]' \
+            '(-O --save-optional)'{-O,--save-optional}'[Only remove packages from `optionalDependencies`]' \
+            '(-P --save-prod)'{-P,--save-prod}'[Only remove packages from `dependencies`]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            $filter_args
+        ;;
+
+        link|ln)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot
+        ;;
+
+        unlink)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot
+        ;;
+
+        rebuild|rb)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            $filter_args
+        ;;
+
+        prune)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--no-optional[Remove the packages specified in `optionalDependencies`]' \
+            '--prod[Remove the packages specified in `devDependencies`]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot
+        ;;
+
+        fetch)
+          _arguments \
+            $common_args \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--prod[Development packages will not be fetched]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot
+        ;;
+
+        install-test|it)
+          _arguments \
+            $common_top \
+            '(--no-frozen-lockfile --frozen-lockfile)'{--no-frozen-lockfile,--frozen-lockfile}'[Don'\''t generate a lockfile and fail if an update is needed. This setting is on by default in CI environments, so use --no-frozen-lockfile if you need to disable it for some reason]' \
+            '(--no-verify-store-integrity --verify-store-integrity)'{--no-verify-store-integrity,--verify-store-integrity}'[If false, doesn'\''t check whether packages in the store were mutated]' \
+            '--child-concurrency[Controls the number of child processes run parallelly to build node modules]' \
+            '(-D --dev)'{-D,--dev}'[Only `devDependencies` are installed regardless of the `NODE_ENV`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--fix-lockfile[Fix broken lockfile entries automatically]' \
+            '--force[Force reinstall dependencies: refetch packages modified in store, recreate a lockfile and/or modules directory created by a non-compatible version of pnpm]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--hoist-pattern[Hoist all dependencies matching the pattern to `node_modules/.pnpm/node_modules`. The default pattern is * and matches everything. Hoisted packages can be required by any dependencies, so it is an emulation of a flat node_modules]' \
+            '--ignore-pnpmfile[Disable pnpm hooks defined in .pnpmfile.cjs]' \
+            '--ignore-scripts[Don'\''t run lifecycle scripts]' \
+            '--lockfile-dir[The directory in which the pnpm-lock.yaml of the package will be created. Several projects may share a single lockfile]' \
+            '--lockfile-only[ Dependencies are not downloaded. Only `pnpm-lock.yaml` is updated]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--modules-dir[The directory in which dependencies will be installed (instead of node_modules)]' \
+            '--network-concurrency[Maximum number of concurrent network requests]' \
+            '--no-hoist[Dependencies inside the modules directory will have access only to their listed dependencies]' \
+            '--no-lockfile[Don'\''t read or generate a `pnpm-lock.yaml` file]' \
+            '--no-optional[`optionalDependencies` are not installed]' \
+            '--offline[Trigger an error if any required dependencies are not available in local store]' \
+            '--package-import-method[Changes the package import method]:method:->package_import_method_args' \
+            '--prefer-frozen-lockfile[If the available `pnpm-lock.yaml` satisfies the `package.json` then perform a headless installation]' \
+            '(-P --prod)'{-P,--prod}'[Packages in `devDependencies` won'\''t be installed]' \
+            '--public-hoist-pattern[Hoist all dependencies matching the pattern to the root of the modules directory `-r, --recursive`. Run installation recursively in every package found in subdirectories. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--shamefully-hoist[All the subdeps will be hoisted into the root node_modules. Your code will have access to them]' \
+            '--side-effects-cache[Use or cache the results of (pre/post)install hooks]' \
+            '--side-effects-cache-readonly[Only use the side effects cache if present, do not create it for new packages]' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--strict-peer-dependencies[Fail on missing or invalid peer dependencies]' \
+            '--use-running-store-server[Only allows installation with a store server. If no store server is running, installation will fail]' \
+            '--virtual-store-dir[The directory with links to the store (default is node_modules/.pnpm). All  direct and indirect dependencies of the project are linked into this directory]' \
+            $common_args_foot \
+            '--reporter[Allows you to choose the reporter that will log debug info to the terminal about the installation progress]:reporter:->reporter_args' \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        audit)
+          _arguments \
+            '--audit-level[Only print advisories with severity greater than or equal to <severity>]:level:(low moderate high critical)' \
+            '(-D --dev)'{-D,--dev}'[Only audit `devDependencies`]' \
+            '--fix[Add overrides to the package.json file in order to force non-vulnerable versions of the dependencies]' \
+            '--ignore-registry-errors[Use exit code 0 if the registry responds with an error. Useful when audit checks are used in CI. A build should fail because the registry has issues]'
+            '--json[Output audit report in JSON format]' \
+            '--no-optional[Don'\''t audit `optionalDependencies`]' \
+            '(-P -prod)'{-P,--prod}'[Only audit `dependencies` and `optionalDependencies`]' \
+        ;;
+
+        list|ls)
+          _arguments \
+            $common_args \
+            '--depth[Max display depth of the dependency tree]:depth:->depth_args' \
+            '(-D --dev)'{-D,--dev}'[Display only the dependency graph for packages in `devDependencies`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[List packages in the global install prefix instead of in the current project]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--json[Output audit report in JSON format]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--long[Show extended information]' \
+            '--no-optional[Don'\''t display packages from `optionalDependencies`]' \
+            '--parseable[Show parseable output instead of tree view]' \
+            '(-P --prod)'{-P,--prod}'[Display only the dependency graph for packages in `dependencies` and `optionalDependencies`]' \
+            '(--recursive -r)'{--recursive,-r}'[Remove from every package found in subdirectories or from every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        outdated)
+          _arguments \
+            $common_args \
+            '--compatible[Print only versions that satisfy specs in package.json]' \
+            '(-D --dev)'{-D,--dev}'[Check only `devDependencies`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[List packages in the global install prefix instead of in the current project]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--long[By default, details about the outdated packages (such as a link to the repo) are not displayed. To display the details, pass this option]' \
+            '--no-optional[Don'\''t check `optionalDependencies`]' \
+            '--no-table[Prints the outdated packages in a list. Good for small consoles]' \
+            '(-P --prod)'{-P,--prod}'[Check only `dependencies` and `optionalDependencies`]' \
+            '(--recursive -r)'{--recursive,-r}'[Check for outdated dependencies in every package found in subdirectories or in every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        why)
+          _arguments \
+            $common_args \
+            '--compatible[Print only versions that satisfy specs in package.json]' \
+            '(-D --dev)'{-D,--dev}'[Display only the dependency graph for packages in `devDependencies`]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '(-g --global)'{-g,--global}'[List packages in the global install prefix instead of in the current project]' \
+            '--global-dir[Specify a custom directory to store global packages]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--long[Show extended information]' \
+            '--no-optional[Don'\''t display packages from `optionalDependencies`]' \
+            '--parseable[Show parseable output instead of tree view]' \
+            '(-P --prod)'{-P,--prod}'[Display only the dependency graph for packages in `dependencies` and `optionalDependencies`]' \
+            '(--recursive -r)'{--recursive,-r}'[Check for outdated dependencies in every package found in subdirectories or in every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args
+        ;;
+
+        run|run-script)
+          if [[ -n $opt_args[--cwd] ]]; then
+            _pnpm_run_cwd=$opt_args[--cwd]
+          else
+            _pnpm_run_cwd=''
+          fi
+          _arguments \
+            $common_args \
+            '--compatible[Print only versions that satisfy specs in package.json]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--if-present[Avoid exiting with a non-zero exit code when the script is undefined]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--no-bail[The command will exit with a 0 exit code even if the script fails]' \
+            '--parallel[Completely disregard concurrency and topological sorting, running a given script immediately in all matching packages with prefixed streaming output. This is the preferred flag for long-running processes such as watch run over many packages]' \
+            '(--recursive -r)'{--recursive,-r}'[Check for outdated dependencies in every package found in subdirectories or in every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            $common_args_foot \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]' \
+            $filter_args \
+            '1: :_pnpm_scripts' \
+            '*:: :_default'
+        ;;
+
+        test|t|tst)
+          _arguments \
+            '(--recursive -r)'{--recursive,-r}'[Check for outdated dependencies in every package found in subdirectories or in every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            $filter_args
+        ;;
+
+        exec)
+          _arguments \
+            '--parallel[Completely disregard concurrency and topological sorting, running a given script immediately in all matching packages with prefixed streaming output. This is the preferred flag for long-running processes such as watch run over many packages]' \
+            '(-r --recursive)'{-r,--recursive}'[Run the shell command in every package found in subdirectories or every workspace package, when executed inside a workspace. For options that may be used with `-r`, see "pnpm help recursive"]' \
+            '(-c,--shell-mode)'{-c,--shell-mode}'[If exist, runs file inside of a shell. Uses /bin/sh on UNIX and \cmd.exe on Windows. The shell should understand the -c switch on UNIX or /d /s /c on Windows]'
+        ;;
+
+        dlx)
+          _arguments \
+            '--package[The package to install before running the command]' \
+            '--reporter[Allows you to choose the reporter that will log debug info to the terminal about the installation progress]:reporter:->reporter_args' \
+            '(-s --silent)'{-s,--silent}'[No output is logged to the console, except fatal errors]'
+        ;;
+
+        env)
+          _arguments \
+            '1: :(use)' \
+            '*:: :->use_args'
+        ;;
+
+        publish)
+          _arguments \
+            '--access[Tells the registry whether the published package should be public or restricted]:access:(public restricted)' \
+            '--dry-run[Does everything a publish would do except actually publishing to the registry]' \
+            '--force[Packages are proceeded to be published even if their current version is already in the registry. This is useful when a `prepublishOnly` script bumps the version of the package before it is published]' \
+            '--tag[Publishes the package with the given tag. By default, pnpm publish updates the latest tag]' \
+            '--ignore-scripts[Ignores any publish related lifecycle scripts (`prepublishOnly`, `postpublish`, and the like)]' \
+            '--no-git-checks[Don'\''t check if current branch is your publish branch, clean, and up-to-date with remote]' \
+            '--otp[When publishing packages that require two-factor authentication, this option can specify a one-time password]' \
+            '--publish-branch[Sets branch name to publish. Default is master and main]' \
+            '--report-summary[Save the list of the newly published packages to "pnpm-publish-summary.json". Useful when some other tooling is used to report the list of published packages]' \
+            '--tag[Registers the published package with the given tag. By default, the "latest" tag is used]'
+        ;;
+
+        pack)
+          _arguments \
+            '--pack-destination[Directory in which `pnpm pack` will save tarballs. The default is the current working directory]'
+        ;;
+
+        m|multi|recursive)
+          _arguments \
+            '--link-workspace-packages[LLocally available packages are linked to node_modules instead of being downloaded from the registry. Convenient to use in a multi-package repository]' \
+            '--no-bail[Continues executing other tasks even if a task threw an error]' \
+            '--reverse[Reverse the order that packages get ordered in. Disabled by default]' \
+            '(--no-sort --sort)'{--no-sort,--sort}'[Sort packages topologically (dependencies before dependents)]' \
+            '--workspace-concurrency[Set the maximum number of concurrency. Default is 4. For unlimited concurrency use Infinity]:number:(Infinity)' \
+            $filter_args
+        ;;
+
+        server)
+          _arguments \
+            '1: :_pnpm_server_commands' \
+            '*:: :->server_args'
+        ;;
+
+        store)
+          _arguments \
+            '1: :_pnpm_store_commands' \
+            '*:: :_default'
+        ;;
+
+        root)
+          _arguments \
+            '(--global -g)'{--global,-g}'[The global package'\''s modules directory is printed]'
+        ;;
+
+        bin)
+          _arguments \
+            '(--global -g)'{--global,-g}'[Prints the location of the globally installed executables]'
+        ;;
+
+        *)
+          _default
+        ;;
+      esac
+    ;;
+  esac
+
+  case $state in
+    package_import_method_args)
+      local method_groups=(
+        'auto[Clones/hardlinks or copies packages. The selected method depends from the file system]'
+        'clone[Clone (aka copy-on-write) packages from the store]'
+        'copy[Copy packages from the store]'
+        'hardlink[Hardlink packages from the store]'
+      )
+      _values 'methods' $method_groups
+    ;;
+
+    reporter_args)
+      local reporter_groups=(
+        'append-only[The output is always appended to the end. No cursor manipulations are performed]'
+        'default[The default reporter when the stdout is TTY]'
+        'ndjson[The most verbose reporter. Prints all logs in ndjson format]'
+        'silent[No output is logged to the console, except fatal errors]'
+      )
+      _values 'reporters' $reporter_groups
+    ;;
+
+    depth_args)
+      local depth_groups=(
+        '-1[Display only projects. Useful in a monorepo]'
+        '0[Display only direct dependencies]'
+      )
+      _values 'depths' $depth_groups
+    ;;
+
+    use_args)
+      case $words[1] in
+        use)
+          _arguments \
+            '(--global -g)'{--global,-g}'[The changes are made systemwide]'
+        ;;
+      esac
+    ;;
+
+    server_args)
+      case $words[1] in
+        start)
+          _arguments \
+            '(--no-color --color)'{--no-color,--color}'[Controls colors in the output. By default, output is always colored when it goes directly to a terminal]' \
+            '(--no-lock --lock --no-verify-store-integrity --verify-store-integrity)'{--no-lock,--lock,--no-verify-store-integrity,--verify-store-integrity}'[If false, doesn'\''t check whether packages in the store were mutated]' \
+            '--aggregate-output[Aggregate output from child processes that are run in parallel, and only print output when child process is finished. It makes reading large logs after running `pnpm recursive` with `--parallel` or with `--workspace-concurrency` much easier (especially on CI). Only `--reporter=append-only` is supported]' \
+            '--background[Runs the server in the background]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--ignore-stop-requests[Disallows stopping the server using `pnpm server stop`]' \
+            '--ignore-upload-requests[Disallows creating new side effect cache during install]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--network-concurrency[Maximum number of concurrent network requests]' \
+            '--port[The port number to use, when TCP is used for communication]' \
+            '--protocol[The communication protocol used by the server]:protocol:(auto tcp ipc)' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--use-stderr[Divert all output to stderr]' \
+            '(-w --workspace-root)'{-w,--workspace-root}'[Run the command on the root workspace project]'
+        ;;
+
+        stop)
+          _arguments \
+            '(--no-color --color)'{--no-color,--color}'[Controls colors in the output. By default, output is always colored when it goes directly to a terminal]' \
+            '(--no-lock --lock --no-verify-store-integrity --verify-store-integrity)'{--no-lock,--lock,--no-verify-store-integrity,--verify-store-integrity}'[If false, doesn'\''t check whether packages in the store were mutated]' \
+            '--aggregate-output[Aggregate output from child processes that are run in parallel, and only print output when child process is finished. It makes reading large logs after running `pnpm recursive` with `--parallel` or with `--workspace-concurrency` much easier (especially on CI). Only `--reporter=append-only` is supported]' \
+            '--background[Runs the server in the background]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--ignore-stop-requests[Disallows stopping the server using `pnpm server stop`]' \
+            '--ignore-upload-requests[Disallows creating new side effect cache during install]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--network-concurrency[Maximum number of concurrent network requests]' \
+            '--port[The port number to use, when TCP is used for communication]' \
+            '--protocol[The communication protocol used by the server]:protocol:(auto tcp ipc)' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--use-stderr[Divert all output to stderr]' \
+            '(-w --workspace-root)'{-w,--workspace-root}'[Run the command on the root workspace project]'
+        ;;
+
+        status)
+          _arguments \
+            '(--no-color --color)'{--no-color,--color}'[Controls colors in the output. By default, output is always colored when it goes directly to a terminal]' \
+            '(--no-lock --lock --no-verify-store-integrity --verify-store-integrity)'{--no-lock,--lock,--no-verify-store-integrity,--verify-store-integrity}'[If false, doesn'\''t check whether packages in the store were mutated]' \
+            '--aggregate-output[Aggregate output from child processes that are run in parallel, and only print output when child process is finished. It makes reading large logs after running `pnpm recursive` with `--parallel` or with `--workspace-concurrency` much easier (especially on CI). Only `--reporter=append-only` is supported]' \
+            '--background[Runs the server in the background]' \
+            '(-C --dir)'{-C,--dir}'[Change to directory <dir>]:dir' \
+            '--ignore-stop-requests[Disallows stopping the server using `pnpm server stop`]' \
+            '--ignore-upload-requests[Disallows creating new side effect cache during install]' \
+            '--loglevel[What level of logs to report. Any logs at or higher than the given level will be shown. Or use `--silent` to turn off all logging]:level:(debug info warn error)' \
+            '--network-concurrency[Maximum number of concurrent network requests]' \
+            '--port[The port number to use, when TCP is used for communication]' \
+            '--protocol[The communication protocol used by the server]:protocol:(auto tcp ipc)' \
+            '--store-dir[The directory in which all the packages are saved on the disk]' \
+            '--stream[Stream output from child processes immediately, prefixed with the originating package directory. This allows output from different packages to be interleaved]' \
+            '--use-stderr[Divert all output to stderr]' \
+            '(-w --workspace-root)'{-w,--workspace-root}'[Run the command on the root workspace project]'
+        ;;
+      esac
+    ;;
+  esac
+}
+
+_pnpm "$@"
