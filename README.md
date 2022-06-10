@@ -22,7 +22,7 @@ zi light baliestri/pnpm.plugin.zsh
 | Alias | Command                              | Description                                                                   |
 | ----- | ------------------------------------ | ----------------------------------------------------------------------------- |
 | pn    | `pnpm`                               | The _`pnpm`_ command                                                          |
-| pnx   | `pnpx`                               | Fetch a package, load it and run command                                      |
+| pnx   | `pnpm dlx`                               | Fetch a package, load it and run command                                      |
 | pna   | `pnpm add`                           | Install a package in dependencies (`package.json`)                            |
 | pnad  | `pnpm add --save-dev`                | Install a package in devDependencies (`package.json`)                         |
 | pnap  | `pnpm add --save-peer`               | Install a package in peerDependencies (`package.json`)                        |

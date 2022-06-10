@@ -44,6 +44,4 @@ alias pni='pnpm init'
 alias pnset='pnpm setup'
 alias pnpub='pnpm publish'
 alias pnsv='pnpm server'
-
-# pnpx
-alias pnx='pnpx'
+alias pnx='pn dlx'
